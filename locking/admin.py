@@ -97,7 +97,7 @@ class LockableAdminMixin(object):
             if media:
                 # This is our hacky string-replacement, described more fully
                 # in the comments for the `media` @property
-                media = re.sub(r'/0/(locking_variables\.js)', r'/%d/\1' % obj_pk, media)
+                media = re.sub(r'/0/(locking_variables\.js)', r'/%d/\1' % obj_pk, unicode(media))
                 context['media'] = mark_safe(media)
         return super(LockableAdminMixin, self).render_change_form(
                 request, context, add=add, obj=obj, **kwargs)

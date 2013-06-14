@@ -10,6 +10,31 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
 // Make sure jQuery is available.
 (function($) {
 
+
+    if (typeof $.fn.hasClasses === 'undefined') {
+        var re_classNameWhitespace = /[\n\t\r ]+/g;
+
+        $.fn.hasClasses = function(classes) {
+            if (!classes || typeof(classes) != 'object' || !classes.length) {
+                return false;
+            }
+            var i = 0,
+                l = this.length,
+                classNameRegex = new RegExp("(" + classes.join(" | ") + ")");
+            for (; i < l; i++) {
+                if (this[i].nodeType !== 1) {
+                    continue;
+                }
+                var className = this[i].className;
+                var testStr = (" " + this[i].className + " ").replace(re_classNameWhitespace, " ");
+                if (classNameRegex.test(testStr)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+    }
+
     // Global error function that redirects to the frontpage if something bad
     // happens.
     DJANGO_LOCKING.error = function() {
@@ -38,7 +63,7 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
         return baseUrl.replace(regex, "/" + id + "/" + action + "/");
     };
 
-    function unlock_click_event(){
+    function unlock_click_event() {
         //Locking toggle function
         $("a.locking-status").click(function(e) {
             e.preventDefault();
@@ -98,7 +123,7 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
         
         // Creates empty div in top of page.
         var create_notification_area = function() {
-            $("#content").prepend(
+            $("#content-inner, #content").prepend(
                 '<div id="locking_notification"></div>');
         };
         
@@ -115,63 +140,96 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
         var display_islocked = function(data) {
             update_notification_area(interpolate(text.is_locked, data, true));
         };
-        
+
+        $(document).on('click', 'a', function(evt) {
+            $a = $(this);
+
+            var isDisabled = $("form").eq(0).data('isLockingDisabled');
+            if (!isDisabled) {
+                return true;
+            }
+
+            var isHandler = ($a.hasClasses([
+                'grp-add-handler', 'add-handler',
+                'add-another',
+                'grp-delete-handler', 'delete-handler',
+                'delete-link',
+                'remove-handler', 'grp-remove-handler',
+                'arrow-up-handler', 'grp-arrow-up-handler',
+                'arrow-down-handler', 'grp-arrow-down-handler'
+            ]));
+
+            if (isHandler) {
+                evt.stopPropagation();
+                evt.preventDefault();
+                alert("Page is locked");
+            }
+        });
+
+        var toggle_ckeditor_readonly = function(isReadOnly) {
+            var toggle_editor_readonly = function(editor) {
+                if (editor.status == 'ready' || editor.status == 'basic_ready') {
+                    editor.setReadOnly(isReadOnly);
+                } else {
+                    editor.on('contentDom', function(e) {
+                        e.editor.setReadOnly(isReadOnly);
+                    });
+                }
+            };
+            if (window.CKEDITOR !== undefined) {
+                switch (CKEDITOR.status) {
+                    case 'basic_ready':
+                    case 'ready':
+                    case 'loaded':
+                    case 'basic_loaded':
+                        for (var instanceId in CKEDITOR.instances) {
+                            toggle_editor_readonly(CKEDITOR.instances[instanceId]);
+                        }
+                        break;
+                    default:
+                        CKEDITOR.on("instanceReady", function(e) {
+                            toggle_editor_readonly(e.editor);
+                        });
+                        break;
+                }
+            }
+        };
+
         // Disables all form elements.
         var disable_form = function() {
+            var $form = $("form").eq(0);
+            var isDisabled = $form.data('isLockingDisabled');
+            if (isDisabled) {
+                return;
+            }
+            $form.data('isLockingDisabled', true);
             $(":input[disabled]").addClass('_locking_initially_disabled');
-            $(":input").attr("disabled", "disabled");
+            $(":input:not(.django-select2, .django-ckeditor-textarea)").attr("disabled", "disabled");
 
-            // Grapelli's delete is an anchor tag :(
-            $('a.delete-link').each(function() {
-                // Copy over the old_href
-                $(this).attr('old_href', $(this).attr('href'));
-                $(this).attr('href', 'javascript:alert("Page is locked.");');
-            });
+            toggle_ckeditor_readonly(true);
 
-            // Handle CKeditors as well, which is a little annoying since there
-            // is an inherent race condition with it.
-            if(window.CKEDITOR !== undefined) {
-                if (CKEDITOR.status != 'basic_ready' && CKEDITOR.status != 'loaded') {
-                    CKEDITOR.on("instanceReady", function(e) {
-                        e.editor.setReadOnly(true);
-                    });
-                } else {
-                    for (var instanceId in CKEDITOR.instances) {
-                        var instance = CKEDITOR.instances[instanceId];
-                        instance.setReadOnly(true);
-                    }
-                }
+            if (typeof $.fn.select2 === "function") {
+                $('.django-select2').select2("disable");
             }
         };
         
         // Enables all form elements that was not disabled from the start.
         var enable_form = function() {
-            $(":input").not('._locking_initially_disabled').removeAttr("disabled");
-            $('a.delete-link').each(function() {
-                $(this).attr('href', $(this).attr('old_href'));
-            });
-            // Handle CKeditors as well
-            if(window.CKEDITOR !== undefined) {
-                if (CKEDITOR.status != 'basic_ready' && CKEDITOR.status != 'loaded') {
-                    CKEDITOR.on("instanceReady", function(e) {
-                        e.editor.setReadOnly(false);
-                    });
-                } else {
-                    for (var instanceId in CKEDITOR.instances) {
-                        var instance = CKEDITOR.instances[instanceId];
-                        instance.setReadOnly(false);
-                    }
-                }
+            var $form = $("form").eq(0);
+            var isDisabled = $form.data('isLockingDisabled');
+            if (!isDisabled) {
+                return;
             }
+            $form.data('isLockingDisabled', false);
+            $(":input:not(.django-select2, .django-ckeditor-textarea)").not('._locking_initially_disabled').removeAttr("disabled");
+
+            toggle_ckeditor_readonly(false);
 
             // Handle django-select2.  We really should add events to
             // django-locking so other items can know when to enable/disable
-            if($.fn.select2 !== undefined) {
-                $('.django-select2').each(function() {
-                    $(this).select2("enable");
-                });
+            if (typeof $.fn.select2 === "function") {
+                $('.django-select2').select2("enable");
             }
-
         };
         
         // The user did not save in time, expire the page.
@@ -214,6 +272,7 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
                 cache: false,
                 complete: function(jqXHR, textStatus) {
                     if (jqXHR.status === 403) {
+                        disable_form();
                         display_islocked();
                     } else if (jqXHR.status === 200) {
                         enable_form();
@@ -225,17 +284,16 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
             });
         };
 
-        var refresh_lock = function(){
+        var refresh_lock = function() {
             if (!urls.lock_status) {
                 return;
             }
-            $.getJSON(urls.lock_status, function(resp){
+            $.getJSON(urls.lock_status, function(resp) {
                 if (resp.for_user === DJANGO_GLOBALS.username) {
                     $.get(urls.lock);
-                    console.log('Renewed');
                 } else {
                     var msg; // If possible, we should let the user know who's competing for the lock.
-                    if(resp.for_user || false) {
+                    if (resp.for_user || false) {
                         msg = resp.for_user + " removed your lock on this story.";
                     } else {
                         msg = "You lost your lock on this story. Save your work.";
@@ -247,31 +305,47 @@ var DJANGO_LOCKING = DJANGO_LOCKING || {};
             });
         };
         
-        // The server gave us locking info. Either lock or keep it unlocked
-        // while showing notification.
-        var parse_succesful_request = function(data, textStatus, jqXHR) {
-            if (!data.applies) {
-                lock_page();
-            } else {
-                display_islocked(data);
-            }
-        };
-        
         // Polls server for the page lock status.
         var request_locking_info = function() {
-            if (!urls.lock_status) {
+            if (!urls.lock) {
                 return;
             }
             $.ajax({
-                url: urls.lock_status,
-                success: parse_succesful_request,
-                error: DJANGO_LOCKING.error,
+                url: urls.lock,
+                success: function(data, textStatus, jqXHR) {
+                    // The server gave us locking info. Either lock or keep it
+                    // unlocked while showing notification.
+                    if (!data.applies) {
+                        // lock_page();
+                        enable_form();
+                        setup_locked_page();
+                    } else {
+                        disable_form();
+                        display_islocked(data);
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    if (jqXHR.status === 403) {
+                        var data;
+                        try {
+                            data = $.parseJSON(jqXHR.responseText);
+                        } catch(e) {}
+                        disable_form();
+                        display_islocked(data);
+                    } else if (jqXHR.status === 200) {
+                        enable_form();
+                        setup_locked_page();
+                    } else {
+                        DJANGO_LOCKING.error();
+                    }
+                    
+                },
+                // DJANGO_LOCKING.error,
                 cache: false
             });
         };
         
         // Initialize.
-        disable_form();
         create_notification_area();
         request_locking_info();
 

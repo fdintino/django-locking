@@ -226,7 +226,9 @@ class Lock(models.Model):
         logger.debug("Checking if the lock on `%s` applies to user `%s`" % (
                                                                   self, user))
         # a lock does not apply to the person who initiated the lock
-        if self.is_locked and self.locked_by != user:
+        user_pk = getattr(user, 'pk', None)
+        locked_user_pk = self._locked_by_id
+        if self.is_locked and locked_user_pk != user_pk:
             logger.debug("Lock applies.")
             return True
         else:
@@ -241,7 +243,9 @@ class Lock(models.Model):
         for most intents and
         purposes.
         """
-        return user == self.locked_by
+        user_pk = getattr(user, 'pk', None)
+        locked_user_pk = self._locked_by_id
+        return bool(self.is_locked and user_pk and locked_user_pk == user_pk)
 
     def save(self, *vargs, **kwargs):
         super(Lock, self).save(*vargs, **kwargs)

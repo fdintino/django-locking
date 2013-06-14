@@ -29,7 +29,6 @@ def locking_form_factory(model, form=ModelForm, *args, **kwargs):
 
         def _post_clean(self):
             super(locking_form, self)._post_clean()
-
             # We were not passed a user, so we have no way of telling who is
             # the owner of an object's lock; better not to raise
             # ValidationError in that case

@@ -27,10 +27,12 @@ def lock(model_admin, request, object_id, extra_context=None):
     try:
         lock.lock_for(request.user)
     except ObjectLockedError:
-        return HttpResponse(status=403)
+        status = 403
     else:
+        status = 200
         lock.save()
-        return HttpResponse(status=200)
+    return lock_status(model_admin, request, object_id,
+            extra_context=extra_context, status=status)
 
 
 def unlock(model_admin, request, object_id, extra_context=None):
@@ -44,7 +46,7 @@ def unlock(model_admin, request, object_id, extra_context=None):
         return HttpResponse(status=200)
 
 
-def lock_status(model_admin, request, object_id, extra_context=None):
+def lock_status(model_admin, request, object_id, extra_context=None, **kwargs):
     data = {
         'is_active': False,
         'applies': False,
@@ -61,7 +63,8 @@ def lock_status(model_admin, request, object_id, extra_context=None):
             'for_user': getattr(lock.locked_by, 'username', None),
             'applies': lock.lock_applies_to(request.user),
         })
-    return HttpResponse(json_encode(data), mimetype='application/json')
+    status = kwargs.pop('status', 200)
+    return HttpResponse(json_encode(data), mimetype='application/json', status=status)
 
 
 def locking_js(model_admin, request, object_id, extra_context=None):
